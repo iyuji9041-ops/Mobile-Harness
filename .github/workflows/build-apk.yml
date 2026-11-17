@@ -9,7 +9,7 @@ on:
       tag_name:
         description: 'Release Tag'
         required: false
-        default: 'v1.0.10-zaszix-v2'
+        default: 'v1.0.10-zaszix-v3'
 
 permissions:
   contents: write
@@ -44,6 +44,8 @@ jobs:
             "https://github.com/techjarves/Mobile-Harness/releases/download/runtime-2026.09.4/pocketdev-agy-arm64-2026.09.1.tar.zst"
           curl -fL --retry 3 -o dist/runtime-bundles/pocketdev-core-arm64-2026.09.5.tar.zst \
             "https://github.com/techjarves/Mobile-Harness/releases/download/runtime-2026.09.4/pocketdev-core-arm64-2026.09.5.tar.zst"
+          curl -fL --retry 3 -o dist/runtime-bundles/gh-2.100.0-linux-arm64.tar.gz \
+            "https://github.com/cli/cli/releases/download/v2.100.0/gh_2.100.0_linux_arm64.tar.gz"
           ls -lh dist/runtime-bundles/
 
       - name: Generate release keystore
@@ -79,14 +81,14 @@ jobs:
       - name: Create GitHub Release & Publish APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.tag_name || 'v1.0.10-zaszix-v2' }}
-          name: "Zaszix IDE v1.0.10-v2 (Offline Core + Antigravity Bundled)"
+          tag_name: ${{ github.event.inputs.tag_name || 'v1.0.10-zaszix-v3' }}
+          name: "Zaszix IDE v1.0.10-v3 (Bundled GitHub CLI + Core + Antigravity)"
           body: |
             ## Zaszix IDE (Mobile Harness Parallel Instance)
             - **Package Name (Application ID)**: `com.zaszix.ide`
             - **Version**: 1.0.10 (Code: 11)
-            - **Pre-bundled Runtimes**: Core Linux Rootfs + Antigravity CLI are embedded inside the APK!
-            - **No Network Download Needed**: Sets up completely offline on first launch.
+            - **Pre-bundled Runtimes**: Core Linux Rootfs + Antigravity CLI + GitHub CLI (`gh`) are pre-embedded inside the APK!
+            - **Offline GitHub CLI**: "Connect GitHub" installs `gh` instantly from APK assets without downloading.
             - Supports parallel installation alongside official Mobile Harness (`com.jarves.mh`).
 
             ### Downloads

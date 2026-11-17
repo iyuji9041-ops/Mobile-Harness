@@ -292,28 +292,40 @@ class RuntimeInstaller(private val context: Context) {
         File(rootfs, GITHUB_CLI_GUEST_PATH.removePrefix("/")).canExecute() &&
         githubCliMarker.readTextOrNull() == GITHUB_CLI_VERSION
 
-    /** Installs GitHub's official ARM64 CLI on demand; it is not bundled in the APK. */
+    /** Installs GitHub's official ARM64 CLI on demand; it can be bundled in the APK or fetched online. */
     suspend fun ensureGitHubCliInstalled(onProgress: suspend (RuntimeInstallProgress) -> Unit) {
         if (isGitHubCliInstalled()) return
-        check(!BuildConfig.OFFLINE_RUNTIME_BUNDLES) {
-            str(R.string.rt_install_github_needs_online)
+        val bundledGh = runCatching {
+            context.assets.open("runtime/gh-$GITHUB_CLI_VERSION-linux-arm64.tar.gz")
+        }.getOrNull()
+        if (bundledGh == null) {
+            check(!BuildConfig.OFFLINE_RUNTIME_BUNDLES) {
+                str(R.string.rt_install_github_needs_online)
+            }
         }
         writeResolver()
         downloads.mkdirs()
         val downloaded = File(downloads, "gh-$GITHUB_CLI_VERSION-linux-arm64.tar.gz")
-        onProgress(RuntimeInstallProgress(str(R.string.rt_install_downloading_github_cli), 0.05f))
-        val githubDownloadLabel = str(R.string.rt_install_downloading_version, "GitHub CLI", GITHUB_CLI_VERSION)
-        downloadVerified(GITHUB_CLI_RELEASE_URL, downloaded, GITHUB_CLI_RELEASE_SHA256) { bytes, total ->
-            val ratio = if (total > 0L) bytes.toFloat() / total else 0f
-            onProgress(
-                RuntimeInstallProgress(
-                    message = githubDownloadLabel,
-                    fraction = 0.05f + ratio * 0.75f,
-                    downloadedBytes = bytes,
-                    totalBytes = total.takeIf { it > 0L },
-                    event = RuntimeInstallEvent.DOWNLOAD,
-                ),
-            )
+        if (bundledGh != null) {
+            onProgress(RuntimeInstallProgress(str(R.string.rt_install_installing_version, "GitHub CLI", GITHUB_CLI_VERSION), 0.1f, indeterminate = true))
+            bundledGh.use { input ->
+                FileOutputStream(downloaded).use { input.copyTo(it) }
+            }
+        } else {
+            onProgress(RuntimeInstallProgress(str(R.string.rt_install_downloading_github_cli), 0.05f))
+            val githubDownloadLabel = str(R.string.rt_install_downloading_version, "GitHub CLI", GITHUB_CLI_VERSION)
+            downloadVerified(GITHUB_CLI_RELEASE_URL, downloaded, GITHUB_CLI_RELEASE_SHA256) { bytes, total ->
+                val ratio = if (total > 0L) bytes.toFloat() / total else 0f
+                onProgress(
+                    RuntimeInstallProgress(
+                        message = githubDownloadLabel,
+                        fraction = 0.05f + ratio * 0.75f,
+                        downloadedBytes = bytes,
+                        totalBytes = total.takeIf { it > 0L },
+                        event = RuntimeInstallEvent.DOWNLOAD,
+                    ),
+                )
+            }
         }
         onProgress(RuntimeInstallProgress(str(R.string.rt_install_installing_version, "GitHub CLI", GITHUB_CLI_VERSION), 0.85f, indeterminate = true))
         val destination = File(rootfs, GITHUB_CLI_GUEST_PATH.removePrefix("/"))
@@ -1715,9 +1727,17 @@ printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decis
 
     private fun writeResolver() {
         val manager = context.getSystemService(ConnectivityManager::class.java)
-        val dns = manager.getLinkProperties(manager.activeNetwork)?.dnsServers.orEmpty()
-        val servers = dns.mapNotNull { it.hostAddress }.ifEmpty { listOf("8.8.8.8", "1.1.1.1") }
-        File(rootfs, "etc/resolv.conf").writeText(servers.joinToString("\n") { "nameserver $it" } + "\n")
+        val dns = manager?.getLinkProperties(manager.activeNetwork)?.dnsServers.orEmpty()
+        val dnsIps = dns.mapNotNull { it.hostAddress }
+        val fallback = listOf("8.8.8.8", "1.1.1.1", "2001:4860:4860::8888", "2606:4700:4700::1111")
+        val allServers = (dnsIps + fallback).distinct()
+        val text = buildString {
+            appendLine("options timeout:2 attempts:3")
+            for (s in allServers) {
+                appendLine("nameserver $s")
+            }
+        }
+        File(rootfs, "etc/resolv.conf").writeText(text)
     }
 
     private fun extractRootfs(archive: File, destination: File) {

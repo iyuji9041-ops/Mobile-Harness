@@ -34,7 +34,7 @@ val generatedRuntimeAssets = layout.buildDirectory.dir("generated/runtime-assets
 
 val prepareBundledAgentAssets = tasks.register<Sync>("prepareBundledAgentAssets") {
     from(runtimeBundleDir.asFileTree.matching {
-        include("pocketdev-agy-*.tar.zst", "pocketdev-core-*.tar.zst")
+        include("pocketdev-agy-*.tar.zst", "pocketdev-core-*.tar.zst", "gh-*.tar.gz")
     })
     into(generatedRuntimeAssets.map { it.dir("shared/runtime") })
 }
