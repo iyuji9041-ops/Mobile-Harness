@@ -6,7 +6,7 @@ set -euo pipefail
 # included; authentication, settings, conversations, projects, and device data
 # are never copied.
 ADB_SERIAL="${ADB_SERIAL:-}"
-PACKAGE="${POCKETDEV_PACKAGE:-com.jarves.mh}"
+PACKAGE="${POCKETDEV_PACKAGE:-com.zaszix.ide}"
 VERSION="${POCKETDEV_CLAUDE_VERSION:-2.1.316}"
 SOURCE_SHA256="${POCKETDEV_CLAUDE_SHA256:-55cdb8e162d190432696ea54010e0fca2e18d06fa7a7127fd563b9ffd4f22624}"
 BUNDLE_VERSION="${POCKETDEV_CLAUDE_BUNDLE_VERSION:-2026.11.1}"

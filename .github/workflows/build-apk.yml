@@ -1,0 +1,95 @@
+name: Build and Publish Android APK
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release Tag'
+        required: false
+        default: 'v1.0.10-zaszix'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build APKs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK and NDK
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;28.2.13676358" "cmake;3.22.1" || true
+
+      - name: Download bundled runtime assets
+        run: |
+          mkdir -p dist/runtime-bundles
+          curl -fL -o dist/runtime-bundles/pocketdev-agy-arm64-2026.09.1.tar.zst \
+            "https://github.com/techjarves/Mobile-Harness/releases/download/runtime-2026.09.4/pocketdev-agy-arm64-2026.09.1.tar.zst"
+
+      - name: Generate release keystore
+        run: |
+          keytool -genkeypair -v -keystore release.jks \
+            -alias zaszix -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass zaszix123 -keypass zaszix123 \
+            -dname "CN=Zaszix, OU=IDE, O=Zaszix, L=City, S=State, C=IN"
+
+      - name: Build APKs with Gradle
+        env:
+          MH_UPLOAD_STORE_FILE: ${{ github.workspace }}/release.jks
+          MH_UPLOAD_STORE_PASSWORD: zaszix123
+          MH_UPLOAD_KEY_ALIAS: zaszix
+          MH_UPLOAD_KEY_PASSWORD: zaszix123
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleOnlineDebug assembleOnlineRelease --stacktrace
+
+      - name: Prepare APK outputs
+        run: |
+          mkdir -p release-apks
+          cp app/build/outputs/apk/online/release/app-online-release.apk release-apks/zaszix-ide-v1.0.10-release.apk
+          cp app/build/outputs/apk/online/debug/app-online-debug.apk release-apks/zaszix-ide-v1.0.10-debug.apk
+          ls -la release-apks/
+
+      - name: Upload APKs as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zaszix-ide-apks
+          path: release-apks/*.apk
+
+      - name: Create GitHub Release & Publish APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag_name || 'v1.0.10-zaszix' }}
+          name: "Zaszix IDE v1.0.10 (com.zaszix.ide)"
+          body: |
+            ## Zaszix IDE (Mobile Harness Parallel Instance)
+            - **Package Name (Application ID)**: `com.zaszix.ide`
+            - **Version**: 1.0.10 (Code: 11)
+            - **Variant**: Online Delivery
+            - Supports parallel installation with official Mobile Harness (`com.jarves.mh`).
+
+            ### Downloads
+            - **Release APK**: [zaszix-ide-v1.0.10-release.apk](zaszix-ide-v1.0.10-release.apk)
+            - **Debug APK**: [zaszix-ide-v1.0.10-debug.apk](zaszix-ide-v1.0.10-debug.apk)
+          files: release-apks/*.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
