@@ -1006,7 +1006,11 @@ class RuntimeInstaller(private val context: Context) {
     ): File {
         downloads.mkdirs()
         val destination = File(downloads, bundle.fileName)
-        val useEmbedded = preferEmbedded || BuildConfig.OFFLINE_RUNTIME_BUNDLES
+        val embeddedAvailable = runCatching {
+            context.assets.open("runtime/${bundle.fileName}").close()
+            true
+        }.getOrDefault(false)
+        val useEmbedded = preferEmbedded || BuildConfig.OFFLINE_RUNTIME_BUNDLES || embeddedAvailable
         if (useEmbedded) {
             val loadingLabel = str(R.string.rt_install_loading_bundle, bundle.label)
             onProgress(RuntimeInstallProgress(loadingLabel, from, 0, bundle.compressedBytes))
@@ -1866,19 +1870,41 @@ printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decis
         }
         val temporary = File(destination.parentFile, "${destination.name}.part")
         var existing = temporary.takeIf(File::isFile)?.length() ?: 0L
-        val connection = URL(url).openConnection() as HttpURLConnection
-        connection.connectTimeout = 20_000
-        connection.readTimeout = 120_000
-        connection.instanceFollowRedirects = true
-        if (existing > 0L) connection.setRequestProperty("Range", "bytes=$existing-")
-        check(connection.responseCode in 200..299) { str(R.string.rt_install_download_failed_http, connection.responseCode) }
-        val resumed = connection.responseCode == HttpURLConnection.HTTP_PARTIAL && existing > 0L
+        var currentUrl = url
+        var connection: HttpURLConnection? = null
+        for (redirect in 0..5) {
+            val conn = (URL(currentUrl).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 30_000
+                readTimeout = 120_000
+                instanceFollowRedirects = true
+                setRequestProperty("User-Agent", "MobileHarness/1.0 (Android)")
+                if (existing > 0L) setRequestProperty("Range", "bytes=$existing-")
+            }
+            val code = conn.responseCode
+            if (code in 301..308 && code != 304 && code != 306) {
+                val location = conn.getHeaderField("Location")
+                conn.disconnect()
+                if (!location.isNullOrBlank()) {
+                    currentUrl = if (location.startsWith("http://") || location.startsWith("https://")) {
+                        location
+                    } else {
+                        URL(URL(currentUrl), location).toString()
+                    }
+                    continue
+                }
+            }
+            connection = conn
+            break
+        }
+        val conn = checkNotNull(connection) { "Could not establish HTTP connection" }
+        check(conn.responseCode in 200..299) { str(R.string.rt_install_download_failed_http, conn.responseCode) }
+        val resumed = conn.responseCode == HttpURLConnection.HTTP_PARTIAL && existing > 0L
         if (!resumed) {
             temporary.delete()
             existing = 0L
         }
-        val total = connection.contentLengthLong.takeIf { it >= 0L }?.plus(existing) ?: -1L
-        connection.inputStream.use { input ->
+        val total = conn.contentLengthLong.takeIf { it >= 0L }?.plus(existing) ?: -1L
+        conn.inputStream.use { input ->
             FileOutputStream(temporary, resumed).use { output ->
                 val buffer = ByteArray(128 * 1024)
                 var downloaded = existing
@@ -1891,7 +1917,7 @@ printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decis
                 }
             }
         }
-        connection.disconnect()
+        conn.disconnect()
         val actual = digest(temporary, algorithm)
         if (!actual.equals(expectedChecksum, ignoreCase = true)) {
             temporary.delete()

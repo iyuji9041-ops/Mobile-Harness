@@ -9,7 +9,7 @@ on:
       tag_name:
         description: 'Release Tag'
         required: false
-        default: 'v1.0.10-zaszix'
+        default: 'v1.0.10-zaszix-v2'
 
 permissions:
   contents: write
@@ -40,8 +40,11 @@ jobs:
       - name: Download bundled runtime assets
         run: |
           mkdir -p dist/runtime-bundles
-          curl -fL -o dist/runtime-bundles/pocketdev-agy-arm64-2026.09.1.tar.zst \
+          curl -fL --retry 3 -o dist/runtime-bundles/pocketdev-agy-arm64-2026.09.1.tar.zst \
             "https://github.com/techjarves/Mobile-Harness/releases/download/runtime-2026.09.4/pocketdev-agy-arm64-2026.09.1.tar.zst"
+          curl -fL --retry 3 -o dist/runtime-bundles/pocketdev-core-arm64-2026.09.5.tar.zst \
+            "https://github.com/techjarves/Mobile-Harness/releases/download/runtime-2026.09.4/pocketdev-core-arm64-2026.09.5.tar.zst"
+          ls -lh dist/runtime-bundles/
 
       - name: Generate release keystore
         run: |
@@ -76,14 +79,15 @@ jobs:
       - name: Create GitHub Release & Publish APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.tag_name || 'v1.0.10-zaszix' }}
-          name: "Zaszix IDE v1.0.10 (com.zaszix.ide)"
+          tag_name: ${{ github.event.inputs.tag_name || 'v1.0.10-zaszix-v2' }}
+          name: "Zaszix IDE v1.0.10-v2 (Offline Core + Antigravity Bundled)"
           body: |
             ## Zaszix IDE (Mobile Harness Parallel Instance)
             - **Package Name (Application ID)**: `com.zaszix.ide`
             - **Version**: 1.0.10 (Code: 11)
-            - **Variant**: Online Delivery
-            - Supports parallel installation with official Mobile Harness (`com.jarves.mh`).
+            - **Pre-bundled Runtimes**: Core Linux Rootfs + Antigravity CLI are embedded inside the APK!
+            - **No Network Download Needed**: Sets up completely offline on first launch.
+            - Supports parallel installation alongside official Mobile Harness (`com.jarves.mh`).
 
             ### Downloads
             - **Release APK**: [zaszix-ide-v1.0.10-release.apk](zaszix-ide-v1.0.10-release.apk)
